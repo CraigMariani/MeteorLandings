@@ -1,197 +1,197 @@
+# Source code for interactive choropleth map / dashboard 
+# Followed tutorials here https://towardsdatascience.com/build-an-interactive-choropleth-map-with-plotly-and-dash-1de0de00dce0
+# https://towardsdatascience.com/interactive-choropleth-maps-with-plotly-46c34fba0e48
+# https://towardsdatascience.com/how-to-build-a-complex-reporting-dashboard-using-dash-and-plotl-4f4257c18a7f
+# Steps:
+
+# 1: Arrange/Combine different Elements together on a defined campus
+# 2: Combine all elements in one container like fig=go.Figure (data=trace2 + trace1, layout=layout);
+# 3: Pass the container to dcc.Graph, dcc is dash core components, dash will create web-base web app for dashboard 
+
+
+#####################################################
+# Initial Set Up
+
+# for dash and plotting capabilities
 import dash
 import dash_core_components as dcc # for accessing interactive data visualization with plotly.js
 import dash_html_components as html # for accessing html elements h1 h2
-import pandas as pd
 import plotly.graph_objs as go # for designing Chloropleth map
-# import plotly.plotly as py
-# import sys
-# print(sys.executable) # prints the interpreter you are using
 
-# read in the cleaned data into a data frame
+# for reading in data
+import pandas as pd
+import json
+
+# read in csv file for data analysis
 df = pd.read_csv('../data_set/M_Landings_cleaned.csv')
+print(df.head(10))
 
-print(df.head())
-# we first use html componenets to render 
+# Read in geojson data
+with open('../data_set/coordinates.json', 'r') as json_data:
+    df_coordinates = json.load(json_data)
+print(type(df_coordinates))
+# print(df_coordinates['features'][:])
+# mapbox token for mapping choropleth map
+mapbox_accesstoken = 'pk.eyJ1IjoiY3JhaWdtYXJpYW5pIiwiYSI6ImNrNTMyM2l4MDA0NHMzbHF2NTI0aHdoMzQifQ.l4cSBnBuWaV49cs1XF4MoA'
 
-app = dash.Dash() # initializes app
-
-# create a list of elements that we are going to use
-colors = {
-	'background' : '#FFFFFF',
-	'text' : '#000000',
-	'size' : 18
-}
-
-# boolean masks for Year vs Mass SCatter Plot
-df_fell = df['fall'] == 'Fell'
-df_found = df['fall'] == 'Found'
+##################################################################
+# Create plotly figure
 
 
-markdown_text='''
-Orange = Found 
+# for names in our bar chart
+meteors = df['name'].str.title().tolist()
 
-Blue = Fell
-
-Found means that  the meteorite was not 
-seen as it entered the atmosphere.
-
-Fell means that the meteortie was seen 
-as it entered the atmosphere.
-
-'''
+# for drop down menu so we can see different parts of the data set
+selection = ['mass (g)', 'recclass', 'year', 'fall']
 
 
-# app.layout contains all of our html elements inside of our dash app
-app.layout = html.Div(
-    style={'backgroundColor' : colors['background']},
+# colorscale for choropleth map
+pl_deep=[[0.0, 'rgb(253, 253, 204)'],
+         [0.1, 'rgb(201, 235, 177)'],
+         [0.2, 'rgb(145, 216, 163)'],
+         [0.3, 'rgb(102, 194, 163)'],
+         [0.4, 'rgb(81, 168, 162)'],
+         [0.5, 'rgb(72, 141, 157)'],
+         [0.6, 'rgb(64, 117, 152)'],
+         [0.7, 'rgb(61, 90, 146)'],
+         [0.8, 'rgb(65, 64, 123)'],
+         [0.9, 'rgb(55, 44, 80)'],
+         [1.0, 'rgb(39, 26, 44)']]
+# first trace for bar chart
+trace_bar = []
 
-    children=[
+for current in selection:
+	trace_bar.append(go.Bar(
+		x=df.sort_values([current], ascending=False).head(10)[current],
+		y=df.sort_values([current], ascending=False).head(10)['name'].str.title().tolist(),
+		xaxis='x2',
+		yaxis='y2',
+		marker=dict(
+			color='blue',
+			line=dict(
+				color='black',
+				width=0.5
+				)
+			),
+		visible=False,
+		name='Meterorites with attribute {} '.format(current),
+		orientation='h'
+		))
 
-    	# html component for title 
-	    html.H1(
-	    	# children = text displayed 
-	    	children='Meterorite Landings',
-	    	# style = css used to modify the html
-	    	style={
-	    		'color' : colors['text'],
-	    		'textAlign' : 'center' 
-	    	}
-	    ),
+trace_bar[0]['visible']=True
 
-	    # html component for description
-	    html.Div(
-	    	children="An Analytics Dashboard of NASA's Meterorite Landings",
-	    	style={
-	    		'color' : colors['text'],
-	    		'textAlign' : 'center'
-	    	}
-	    ),
+# second trace for choropleth map
+trace_map = []
 
+for current in selection:
+	trace_map.append(go.Choroplethmapbox(
+		geojson = df_coordinates,
+		# geojson= df_coordinates['features'][:],
+		locations=df['GeoLocation'].tolist(),
+		z = df[current].tolist(),
+		colorscale=pl_deep,
+		text=meteors,
+		colorbar=dict(
+			thickness=20,
+			ticklen=3),
+		marker_line_width=0,
+		marker_opacity=0.7,
+		visible=False,
+		subplot='mapbox1',
+		hovertemplate = "<b>%{text}</b><br><br>" +
+                        "Price: %{z}<br>" +
+                        "<extra></extra>"
+                    )
+    ) # "<extra></extra>" means we don't display the info in the secondary box, such as trace id.
 
-	    # create a single trace scatter plot 
-	    # but make it color coded for fall values (Fell, Found)
-	    dcc.Graph(
-	    	id='Graph1',
-
-	    	figure={
-	    		'data' : [
-	    			dict(
-	    				x = df[df['fall'] == i]['year'],
-	    				y = df[df['fall'] == i]['mass (g)'],
-	    				text = df[df['fall'] == i]['fall'], 
-	    				mode = 'markers', 
-	    				opacity = 0.8,
-	    				marker={
-	    					'size' : 15,
-	    					'line' : {'width': 0.5, 'color': 'white'}
-	    				},
-	    				name=1
-	    			) for i in df.fall.unique()
-	    		],
-
-	    		'layout' : dict(
-	    			title='Year vs Mass',
-	    			xaxis={'type': 'log', 'title': 'Year'},
-	    			yaxis={'title': 'Mass in Grams'},
-	    			margin={'l' : 60, 'b' : 40, 't' : 60, 'r' : 10},
-	    			legend={'x' : 0, 'y' : 1},
-	    			hovermode='closest'
-	    			)
-	    		
-	    	}
-
-	    ),
-
-	    html.Div(
-
-	    	dcc.Markdown(
-	    		children=markdown_text,
-	    		style={
-	    		'color' : colors['text'],
-	    		'textAlign' : 'center'
-	    		}
-	    		)
-
-	    	)
-		
-    ] 
-)
+trace_map[0]['visible']=True
 
 
-# app.layout = html.Div(
-#     style={'backgroundColor' : colors['background']},
+# latitude = -33.892319
+# longitude = 151.146167
+# latitude=0
+# longitude=0
+# ###########################################################################
+# For creating the dash app
+layout = go.Layout(
+	title= {'text': "NASA's Meteorite Landings",
+		'font' : {'size' : 28,
+				'family' :'Arial'}},
 
-#     # html component for title 
-# 	html.H1(
-# 	    # children = text displayed 
-# 	    children='Meterorite Landings',
-# 	    # style = css used to modify the html
-# 	    style={
-# 	    	'color' : colors['text'],
-# 	    	'textAlign' : 'center' 
-# 	    }
-# 	),
+		autosize=True,
 
-# 	# html component for description
-# 	html.Div(
-# 	    children="An Analytics Dashboard of NASA's Meterorite Landings",
-# 	    style={
-# 	    	'color' : colors['text'],
-# 	    	'textAlign' : 'center'
-# 	    }
-# 	),
+		mapbox1 = dict(
+			domain = {'x': [0.3, 1],'y': [0, 1]},
+	        # center = dict(lat=latitude, lon=longitude),
+	        accesstoken = mapbox_accesstoken, 
+	        # zoom = 12
+	      	),
 
+		xaxis2={
+			'zeroline': False,
+	        "showline": False,
+	        "showticklabels":True,
+	        'showgrid':True,
+	        'domain': [0, 0.25],
+	        'side': 'right',
+	        'anchor': 'x2',
+	        },
+	    yaxis2={
+	    	'domain': [0.4, 0.9],
+	        'anchor': 'y2',
+	        'autorange': 'reversed',
+	     	},
+	)
 
-# 	# create a single trace scatter plot 
-# 	# but make it color coded for fall values (Fell, Found)
-# 	dcc.Graph(
-# 	    id='Graph1',
-
-# 	    figure={
-# 	    	'data' : [
-# 	    		dict(
-# 	    			x = df[df['fall'] == i]['year'],
-# 	    			y = df[df['fall'] == i]['mass (g)'],
-# 	    			text = df[df['fall'] == i]['fall'], 
-# 	    			mode = 'markers', 
-# 	    			opacity = 0.8,
-# 	    			marker={
-# 	    				'size' : 15,
-# 	    				'line' : {'width': 0.5, 'color': 'white'}
-# 	    			},
-# 	    			name=1
-# 	    		) for i in df.fall.unique()
-# 	    	],
-
-# 	    	'layout' : dict(
-# 	    		title='Year vs Mass',
-# 	    		xaxis={'type': 'log', 'title': 'Year'},
-# 	    		yaxis={'title': 'Mass in Grams'},
-# 	    		margin={'l' : 60, 'b' : 40, 't' : 60, 'r' : 10},
-# 	    		legend={'x' : 0, 'y' : 1},
-# 	    		hovermode='closest'
-# 	    		)
-	    		
-# 	    	}
-
-# 	    ),
-
-# 	    html.Div(
-
-# 	    	dcc.Markdown(
-# 	    		children=markdown_text,
-# 	    		style={
-# 	    		'color' : colors['text'],
-# 	    		'textAlign' : 'center'
-# 	    		}
-# 	    		)
-
-# 	    	)
-		
-    
-# )
+layout.update(
+	updatemenus=list([
+		dict(x=0,
+			y=1,
+			xanchor='left',
+			yanchor='middle',
+			buttons=list([
+				dict(
+					args=['visible', [True, False, False, False]],
+					label='Attribute type: Mass in Grams',
+					method='restyle'
+					),
+				dict(
+					args=['visible', [False, True, False, False]],
+					label='Attribute type: Classification',
+					method='restyle'
+					),
+				dict(
+					args=['visible', [False, False, True, False]],
+					label='Atribute type: Year',
+					method='restyle'
+					),
+				dict(
+					args=['visible', [False, False, False, True]],
+					label='Attribute type: Fall',
+					method='restyle'
+					)
 
 
-# interpreter starts at name == main
+				])
+			)
+		])
+	)
+
+fig=go.Figure(data=trace_bar + trace_map, 
+	layout=layout)
+
+
+
+app = dash.Dash() # initialize app 
+app.layout = html.Div(children=[
+	html.H1(children=''),
+
+    dcc.Graph(
+        id='example-graph-1',
+        figure=fig
+    ),
+])
+# interpreter starts at __name__ == "__main__"
+# if we try importing this file as a seperate module it will not run 
 if __name__ == "__main__":
-    app.run_server(debug=False) # runs server
+	app.run_server(debug=False)
